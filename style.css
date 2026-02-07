@@ -1,0 +1,332 @@
+/* --- 全局设置 --- */
+:root {
+    --primary: #00695c;
+    --accent: #80cbc4;
+    --text: #eceff1;
+    --bg-overlay: rgba(20, 20, 20, 0.85);
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", serif;
+    background: #121212;
+    color: var(--text);
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* 3D容器：背景由 Three.js 水墨天空球绘制，此处仅作边缘兜底 */
+#canvas-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 1;
+    background: #0a0a0e;
+    pointer-events: auto; /* 确保画布可接收拖拽以转动视角 */
+}
+
+#ui-layer {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 2; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+}
+
+/* --- 顶部栏 --- */
+.top-bar {
+    padding: 20px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+    pointer-events: auto;
+}
+
+.header-group {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+
+.stage-badge {
+    background: var(--primary);
+    padding: 4px 12px; border-radius: 4px;
+    font-size: 0.8rem; font-weight: bold; letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(0,105,92,0.4);
+}
+
+.app-title {
+    margin: 0; font-size: 1.2rem; font-weight: 300; letter-spacing: 3px;
+    color: var(--accent); text-shadow: 0 0 10px rgba(128,203,196,0.3);
+}
+
+.user-area {
+    margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.user-name { font-size: 0.8rem; color: #90a4ae; }
+.btn-link {
+    background: none; border: none; color: var(--accent); font-size: 0.78rem;
+    cursor: pointer; padding: 2px 6px;
+}
+.btn-wechat {
+    display: inline-block; padding: 4px 12px; font-size: 0.8rem;
+    background: #07c160; color: #fff; border-radius: 4px; text-decoration: none;
+}
+.result-login-tip { font-size: 0.85rem; color: #90a4ae; margin: 8px 0; }
+.link-wechat { color: var(--accent); }
+
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-box {
+    background: var(--bg-overlay); border-radius: 12px; max-width: 400px; width: 100%;
+    max-height: 70vh; overflow: hidden; display: flex; flex-direction: column;
+}
+.modal-header {
+    padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.modal-close { background: none; border: none; color: #fff; font-size: 1.4rem; cursor: pointer; }
+.modal-body { padding: 16px; overflow-y: auto; }
+.no-works { color: #90a4ae; margin: 0; }
+.works-list { list-style: none; padding: 0; margin: 0; }
+.works-list li {
+    padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.9rem; color: #cfd8dc;
+}
+.work-shape { color: var(--accent); }
+
+.master-message {
+    display: flex; align-items: flex-start; max-width: 85%;
+}
+
+.avatar {
+    width: 40px; height: 40px;
+    background: #e0f2f1; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+    border: 2px solid var(--primary); margin-right: 12px; flex-shrink: 0;
+}
+
+.bubble {
+    background: rgba(255,255,255,0.95); color: #263238; padding: 10px 15px;
+    border-radius: 0 12px 12px 12px; font-size: 0.9rem;
+    line-height: 1.5;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* --- 底部控制面板 (核心交互区)，可点击折叠 --- */
+.bottom-panel {
+    background: var(--bg-overlay);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding: 0;
+    pointer-events: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 20px 0 0;
+}
+
+.panel-handle {
+    padding: 10px 15px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--accent);
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    transition: background 0.2s, color 0.2s;
+}
+.panel-handle:hover { background: rgba(255,255,255,0.06); }
+.panel-handle:active { background: rgba(255,255,255,0.1); }
+.panel-handle-icon {
+    font-size: 0.7rem;
+    transition: transform 0.25s ease;
+}
+.bottom-panel.collapsed .panel-handle {
+    border-bottom: none;
+    border-radius: 20px 20px 0 0;
+}
+.bottom-panel.collapsed .panel-handle-icon {
+    transform: rotate(-180deg);
+}
+
+.panel-body {
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+    max-height: 90vh;
+}
+.bottom-panel.collapsed .panel-body {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.panel-body .control-content {
+    padding: 15px 15px 25px;
+}
+
+.control-content {
+    width: 100%; display: flex; flex-direction: column; align-items: center;
+}
+
+/* --- 通用组件 --- */
+.btn {
+    background: linear-gradient(135deg, var(--primary), #004d40);
+    border: none; color: white; padding: 12px 30px;
+    border-radius: 50px; font-size: 1rem; letter-spacing: 1px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    transition: transform 0.1s; cursor: pointer; margin-top: 10px;
+}
+.btn:active { transform: scale(0.96); }
+
+/* --- 泥料选择 --- */
+.clay-grid { display: flex; gap: 25px; margin-bottom: 20px; }
+.clay-item { text-align: center; cursor: pointer; opacity: 0.7; transition: opacity 0.3s; }
+.clay-item.selected { opacity: 1; }
+.clay-ball {
+    width: 60px; height: 60px;
+    border-radius: 50%; margin-bottom: 8px;
+    box-shadow: inset -5px -5px 15px rgba(0,0,0,0.5), 0 0 0 2px transparent;
+    transition: all 0.3s;
+}
+.clay-item.selected .clay-ball { transform: scale(1.1); box-shadow: inset -5px -5px 15px rgba(0,0,0,0.5), 0 0 0 3px var(--accent); }
+
+/* --- 器型选择 (Tabs&Grid) --- */
+.category-tabs {
+    display: flex; width: 100%; margin-bottom: 15px; background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    padding: 4px;
+}
+.tab-btn {
+    flex: 1; padding: 8px; text-align: center; color: #90a4ae; cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.9rem; transition: all 0.2s;
+}
+.tab-btn.active { background: var(--primary); color: white; font-weight: bold; }
+
+.shape-scroller {
+    width: 100%;
+    overflow-x: auto; padding-bottom: 10px;
+    -ms-overflow-style: none; scrollbar-width: none;
+}
+.shape-scroller::-webkit-scrollbar { display: none; }
+.shape-list { display: flex; gap: 12px; padding: 0 5px; }
+
+.shape-card {
+    min-width: 80px; height: 110px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.1); cursor: pointer;
+}
+.shape-card.active { background: rgba(0,105,92,0.3); border-color: var(--accent); }
+.shape-preview svg { width: 40px; height: 70px; fill: #cfd8dc; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+.shape-card.active svg { fill: var(--accent); }
+.shape-name { font-size: 0.75rem; margin-top: 8px; color: #b0bec5; }
+
+/* --- 釉料工坊 --- */
+.mineral-rack { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-bottom: 15px; }
+.mineral { text-align: center; width: 50px; cursor: pointer; }
+.rock-icon {
+    width: 40px; height: 35px; background-size: cover; margin: 0 auto;
+    border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+    box-shadow: inset -2px -2px 5px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3);
+}
+.mineral:active .rock-icon { transform: scale(0.9); }
+
+/* --- 烧制界面 --- */
+.fire-controls { display: flex; gap: 20px; width: 100%; justify-content: center; }
+.fire-btn {
+    flex: 1; max-width: 120px; padding: 15px; background: #37474f;
+    border: 1px solid #546e7a; color: white;
+    border-radius: 12px; text-align: center;
+}
+.fire-btn.selected { background: #d84315; border-color: #ff5722; box-shadow: 0 0 15px rgba(216,67,21,0.5); }
+
+/* --- 加载与反馈 --- */
+#loading-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; z-index: 99;
+    display: flex; justify-content: center; align-items: center;
+}
+.spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #00695c; border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 1s infinite linear; margin: 0 auto 15px auto;
+}
+.loading-text { text-align: center; color: var(--primary); font-size: 1.1rem; }
+.sub-text { font-size: 0.8rem; color: #546e7a; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+.hidden { display: none !important; }
+
+#center-feedback {
+    position: absolute;
+    top: 40%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none; /* 不阻挡拖拽，保证可转动视角 */
+}
+.feedback-val { font-size: 3rem; font-weight: bold; color: #ffab91; text-shadow: 0 0 20px #e64a19; }
+
+/* --- 烧制结果：窑评 + 器型知识 --- */
+.result-block { margin-bottom: 14px; }
+.result-eval,
+.result-knowledge {
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    text-align: left;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #cfd8dc;
+}
+.result-eval strong,
+.result-knowledge strong {
+    color: var(--accent);
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+.result-eval p,
+.result-knowledge p {
+    margin: 0 0 8px 0;
+}
+.result-knowledge p:last-child { margin-bottom: 0; }
+.result-knowledge b { color: #90a4ae; font-size: 0.82rem; }
+
+/* --- 手机端：操作界面压低、少挡瓷器画面 --- */
+@media (max-width: 768px) {
+    .top-bar {
+        padding: 10px 12px 8px;
+    }
+    .header-group { margin-bottom: 6px; }
+    .stage-badge { padding: 3px 8px; font-size: 0.7rem; }
+    .app-title { font-size: 0.95rem; letter-spacing: 1px; }
+    .avatar { width: 32px; height: 32px; font-size: 1.2rem; margin-right: 8px; }
+    .bubble { padding: 8px 12px; font-size: 0.8rem; }
+    .master-message { max-width: 92%; }
+
+    .bottom-panel { border-radius: 16px 16px 0 0; }
+    .panel-body { max-height: 38vh; overflow-y: auto; }
+    .panel-body .control-content { padding: 10px 12px 16px; }
+    .clay-grid { gap: 16px; margin-bottom: 12px; }
+    .clay-ball { width: 48px; height: 48px; margin-bottom: 4px; }
+    .category-tabs { margin-bottom: 10px; padding: 3px; }
+    .tab-btn { padding: 6px; font-size: 0.8rem; }
+    .shape-scroller { padding-bottom: 6px; }
+    .shape-card { min-width: 68px; height: 92px; }
+    .shape-preview svg { width: 32px; height: 56px; }
+    .shape-name { font-size: 0.65rem; margin-top: 4px; }
+    .mineral-rack { gap: 10px; margin-bottom: 10px; }
+    .mineral { width: 44px; }
+    .rock-icon { width: 34px; height: 30px; }
+    .btn { padding: 10px 22px; font-size: 0.9rem; margin-top: 6px; }
+    .fire-controls { gap: 12px; }
+    .fire-btn { padding: 12px; max-width: 100px; }
+}
+
+@media (max-width: 480px) {
+    .panel-body { max-height: 34vh; }
+    .panel-body .control-content { padding: 8px 10px 12px; }
+    .feedback-val { font-size: 2.2rem; }
+}

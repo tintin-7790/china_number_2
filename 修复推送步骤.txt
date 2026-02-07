@@ -1,0 +1,35 @@
+========== 按顺序在 cmd 里执行（把下面内容换成你自己的） ==========
+
+【第 1 步】设置 Git 用户名和邮箱（只需做一次，以后不用再设）
+-----------
+git config --global user.email "你的邮箱@xxx.com"
+git config --global user.name "你的名字或昵称"
+
+说明：邮箱可以填你登录 GitHub 用的邮箱，或 GitHub 提供的 noreply 邮箱；
+      名字可以填英文或中文，会显示在提交记录里。
+示例：git config --global user.email "zhangsan@gmail.com"
+      git config --global user.name "Zhang San"
+
+
+【第 2 步】重新提交（因为上次 commit 没成功，所以没有提交记录）
+-----------
+git commit -m "指尖非遗：景德镇制瓷 网页版"
+
+
+【第 3 步】删掉错误的远程地址，改成你自己的
+-----------
+git remote remove origin
+
+git remote add origin https://github.com/你的用户名/你的仓库名.git
+
+说明：把 "你的用户名" 换成你 GitHub 账号名；
+      "你的仓库名" 换成你在 GitHub 上建的那个仓库的名字。
+示例：若仓库地址是 https://github.com/cz2026/jingdezhen-pottery
+      就输入：git remote add origin https://github.com/cz2026/jingdezhen-pottery.git
+
+
+【第 4 步】推送到 GitHub
+-----------
+git push -u origin main
+
+若提示登录：按提示在浏览器里用 GitHub 账号登录或使用 Token 即可。

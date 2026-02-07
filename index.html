@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>指尖非遗：景德镇制瓷（高保真版）</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <div class="loading-text">正在调配高岭土...<br><span class="sub-text">生成4K级程序化纹理</span></div>
+        </div>
+    </div>
+    <div id="canvas-container"></div>
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div class="header-group">
+                <div class="stage-badge" id="stage-name">序章</div>
+                <h1 class="app-title">天工 · 开物</h1>
+            </div>
+            
+            <div class="master-message">
+                <div class="avatar">👴</div>
+                <div class="bubble">
+                    <p id="master-text">瓷之魂，在于土与火的共舞。</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="center-feedback" class="hidden">
+            <div class="feedback-icon">🔥</div>
+            <div class="feedback-val" id="feedback-text">0°C</div>
+        </div>
+
+        <div class="bottom-panel" id="bottom-panel">
+            <div class="panel-handle" id="panel-handle" title="点击收起/展开">
+                <span class="panel-handle-icon">▼</span>
+                <span class="panel-handle-text">收起</span>
+            </div>
+            <div class="panel-body">
+                <div id="control-content" class="control-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
