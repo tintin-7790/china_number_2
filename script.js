@@ -21,13 +21,11 @@ const state = {
     glazeMix: [],
     atmosphere: 'OXIDATION',
     isDragging: false,
-    firingPhase: null,
-    user: null,
-    authChecked: false
+    firingPhase: null
 };
 
-const API_BASE = '';
 const LOCAL_PROGRESS_KEY = 'jdz_local_progress';
+const LOCAL_CERAMICS_KEY = 'jdz_local_ceramics';
 
 function getLocalProgress() {
     try {
@@ -119,38 +117,38 @@ function loadLocalProgress() {
     }
 }
 
-async function api(path, options = {}) {
-    const res = await fetch(API_BASE + path, { credentials: 'include', ...options });
-    const data = res.ok ? await res.json().catch(() => ({})) : null;
-    if (!res.ok) throw new Error(data?.error || '请求失败');
-    return data;
-}
-
-async function checkAuth() {
-    if (state.authChecked) return;
-    state.authChecked = true;
+function getLocalCeramics() {
     try {
-        const res = await fetch(API_BASE + '/api/user/me', { credentials: 'include' });
-        if (res.status === 404) {
-            showWrongServerTip();
-            state.user = null;
-        } else {
-            const data = res.ok ? await res.json().catch(() => ({})) : {};
-            state.user = (data && data.user) || null;
-        }
-    } catch {
-        state.user = null;
-    }
-    renderUserArea();
+        const raw = localStorage.getItem(LOCAL_CERAMICS_KEY);
+        if (!raw) return [];
+        const list = JSON.parse(raw);
+        return Array.isArray(list) ? list : [];
+    } catch { return []; }
 }
 
-function showWrongServerTip() {
-    if (document.getElementById('wrong-server-tip')) return;
-    const tip = document.createElement('div');
-    tip.id = 'wrong-server-tip';
-    tip.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#d32f2f;color:#fff;padding:10px 16px;text-align:center;z-index:9999;font-size:14px;';
-    tip.innerHTML = '微信登录需要先运行「启动带登录.bat」，再用浏览器打开 <strong>http://localhost:3000</strong>（不要用 file:// 或其它端口）';
-    document.body.appendChild(tip);
+function addLocalCeramic(record) {
+    const list = getLocalCeramics();
+    const item = {
+        id: 'ceramic_' + Date.now(),
+        name: record.name || '未命名作品',
+        clayName: record.clayName,
+        shapeName: record.shapeName,
+        glazeName: record.glazeName,
+        shapeId: record.shapeId || '',
+        categoryKey: record.categoryKey || 'bottle',
+        createdAt: new Date().toISOString()
+    };
+    list.unshift(item);
+    try {
+        localStorage.setItem(LOCAL_CERAMICS_KEY, JSON.stringify(list));
+        return item;
+    } catch { return null; }
+}
+
+function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s == null ? '' : s;
+    return div.innerHTML;
 }
 
 function renderUserArea() {
@@ -161,48 +159,29 @@ function renderUserArea() {
         el.className = 'user-area';
         document.querySelector('.header-group').appendChild(el);
     }
-    if (state.user) {
-        el.innerHTML = `
-            <span class="user-name">${escapeHtml(state.user.nickname || '用户')}</span>
-            <button type="button" class="btn-link" id="btn-my-works">我的作品</button>
-            <button type="button" class="btn-link" id="btn-logout">退出</button>
-        `;
-        el.querySelector('#btn-my-works').onclick = () => openMyWorks();
-        el.querySelector('#btn-logout').onclick = () => logout();
-    } else {
-        el.innerHTML = `<a href="${API_BASE}/api/wechat/auth-url?type=redirect" class="btn-wechat">微信登录</a>`;
-    }
+    el.innerHTML = '<button type="button" class="btn-link" id="btn-history">以往历史</button>';
+    el.querySelector('#btn-history').onclick = () => openHistoryModal();
 }
 
-function escapeHtml(s) {
-    const div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
-}
-
-async function logout() {
-    try {
-        await api('/api/user/logout', { method: 'POST' });
-    } catch (_) {}
-    state.user = null;
-    renderUserArea();
-}
-
-async function openMyWorks() {
-    const list = await api('/api/user/ceramics').then(d => d.list).catch(() => []);
+function openHistoryModal() {
+    const list = getLocalCeramics();
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-        <div class="modal-box">
+        <div class="modal-box modal-history">
             <div class="modal-header">
-                <strong>我的作品</strong>
+                <strong>以往历史</strong>
                 <button type="button" class="modal-close">×</button>
             </div>
             <div class="modal-body">
                 ${list.length === 0
-                    ? '<p class="no-works">暂无作品，烧制完成后点击「收藏」即可保存。</p>'
-                    : '<ul class="works-list">' + list.map(w =>
-                        `<li><span class="work-shape">${escapeHtml(w.shapeName)}</span> · ${escapeHtml(w.clayName)} · ${escapeHtml(w.glazeName)}<br><small>${escapeHtml((w.createdAt || '').slice(0, 10))}</small></li>`
+                    ? '<p class="no-works">暂无保存的作品。烧制完成后点击「保存作品」并命名即可加入历史。</p>'
+                    : '<ul class="works-list history-list">' + list.map(w => `
+                        <li class="history-item">
+                            <span class="work-name">${escapeHtml(w.name)}</span>
+                            <span class="work-meta">${escapeHtml(w.shapeName)} · ${escapeHtml(w.clayName)} · ${escapeHtml(w.glazeName)}</span>
+                            <small class="work-date">${escapeHtml((w.createdAt || '').slice(0, 16).replace('T', ' '))}</small>
+                        </li>`
                     ).join('') + '</ul>'}
             </div>
         </div>
@@ -451,7 +430,7 @@ function init() {
     canvas.addEventListener('pointerup', onPointerUp);
 
     document.getElementById('loading-screen').style.display = 'none';
-    checkAuth();
+    renderUserArea();
 
     const bottomPanel = document.getElementById('bottom-panel');
     const panelHandle = document.getElementById('panel-handle');
@@ -520,7 +499,7 @@ function createChineseBackground() {
         { x: 0.55, y: 0.35, r: 0.11, speed: 0.055, opacity: 0.1 },
         { x: 0.88, y: 0.3, r: 0.09, speed: 0.08, opacity: 0.11 }
     ];
-    // 飞鸟：只在天空区域（y 在 0.12～0.42），深色、更大，便于看见
+    // 飞鸟：只在天空区域，单向漂移
     const birds = [
         { x: 0.08, y: 0.2, vx: 0.12, wingPhase: 0 },
         { x: 0.3, y: 0.15, vx: 0.1, wingPhase: 1.2 },
@@ -529,7 +508,14 @@ function createChineseBackground() {
         { x: 0.2, y: 0.35, vx: 0.13, wingPhase: 0.8 },
         { x: 0.45, y: 0.32, vx: 0.15, wingPhase: 1.5 }
     ];
-    // 树已改为 3D，纹理上不再画树
+    // 侧边往返飞鸟：从 A 飞到 B 再飞回 A，循环；左侧与右侧各若干只
+    const sideBirds = [
+        { xA: 0.06, xB: 0.24, y: 0.18, speed: 0.04, phase0: 0, wingPhase: 0 },
+        { xA: 0.1, xB: 0.28, y: 0.28, speed: 0.035, phase0: 0.8, wingPhase: 1.2 },
+        { xA: 0.08, xB: 0.22, y: 0.35, speed: 0.05, phase0: 1.5, wingPhase: 0.6 },
+        { xA: 0.72, xB: 0.9, y: 0.2, speed: 0.038, phase0: 0.3, wingPhase: 0.9 },
+        { xA: 0.76, xB: 0.92, y: 0.32, speed: 0.045, phase0: 1.2, wingPhase: 0.2 }
+    ];
 
     function drawInkWashFrame(time, firingPhase) {
         const t = time * 0.02;
@@ -644,60 +630,80 @@ function createChineseBackground() {
             ctx.fill();
         }
 
-        // 3. 远山：青灰色，与天空区分；由远及近渐变层次
+        // 3. 远山：更平、更雾，偏绿色调；四层低矮连绵，近地平线加雾带
         function drawMountainLayer(pts, r, g, b, alpha, stroke) {
             ctx.beginPath();
-            ctx.moveTo(0, h);
+            ctx.moveTo(-20, h + 20);
             for (let i = 0; i < pts.length - 1; i++) {
                 const p = pts[i], n = pts[i + 1];
                 ctx.bezierCurveTo(p.c1x, p.c1y, n.c0x, n.c0y, n.x, n.y);
             }
-            ctx.lineTo(w + 50, h);
+            ctx.lineTo(w + 80, h + 20);
             ctx.closePath();
             ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
             ctx.fill();
             if (stroke) {
-                ctx.strokeStyle = `rgba(${Math.max(0, r - 18)}, ${Math.max(0, g - 22)}, ${Math.max(0, b - 15)}, ${Math.min(1, alpha + 0.05)})`;
-                ctx.lineWidth = Math.max(2, w * 0.002);
+                ctx.strokeStyle = `rgba(${Math.max(0, r - 20)}, ${Math.max(0, g - 25)}, ${Math.max(0, b - 18)}, ${Math.min(1, alpha * 0.8)})`;
+                ctx.lineWidth = Math.max(1.2, w * 0.0012);
                 ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
                 ctx.stroke();
             }
         }
         const hh = horizon;
-        const layer1 = [
-            { x: w * 0.08, y: hh + h * 0.28, c0x: w * 0.01, c0y: h * 0.65, c1x: w * 0.05, c1y: hh + h * 0.12 },
-            { x: w * 0.22, y: hh + h * 0.08, c0x: w * 0.14, c0y: hh + h * 0.2, c1x: w * 0.18, c1y: hh + h * 0.02 },
-            { x: w * 0.38, y: hh + h * 0.18, c0x: w * 0.28, c0y: hh - h * 0.02, c1x: w * 0.34, c1y: hh + h * 0.1 },
-            { x: w * 0.52, y: hh + h * 0.05, c0x: w * 0.44, c0y: hh + h * 0.14, c1x: w * 0.48, c1y: hh - h * 0.02 },
-            { x: w * 0.68, y: hh + h * 0.15, c0x: w * 0.58, c0y: hh + h * 0.02, c1x: w * 0.64, c1y: hh + h * 0.08 },
-            { x: w * 0.84, y: hh + h * 0.06, c0x: w * 0.74, c0y: hh + h * 0.12, c1x: w * 0.8, c1y: hh + h * 0.01 },
-            { x: w * 1.05, y: h + 10, c0x: w * 0.92, c0y: hh + h * 0.1, c1x: w * 1.0, c1y: h * 0.75 }
-        ];
-        const layer2 = [
-            { x: w * 0.12, y: hh + h * 0.32, c0x: w * 0.04, c0y: hh + h * 0.2, c1x: w * 0.08, c1y: hh + h * 0.25 },
-            { x: w * 0.28, y: hh + h * 0.15, c0x: w * 0.18, c0y: hh + h * 0.28, c1x: w * 0.24, c1y: hh + h * 0.1 },
-            { x: w * 0.45, y: hh + h * 0.22, c0x: w * 0.35, c0y: hh + h * 0.12, c1x: w * 0.42, c1y: hh + h * 0.18 },
-            { x: w * 0.62, y: hh + h * 0.18, c0x: w * 0.52, c0y: hh + h * 0.2, c1x: w * 0.58, c1y: hh + h * 0.14 },
-            { x: w * 0.78, y: hh + h * 0.24, c0x: w * 0.68, c0y: hh + h * 0.12, c1x: w * 0.74, c1y: hh + h * 0.2 },
-            { x: w * 1.05, y: h + 10, c0x: w * 0.88, c0y: hh + h * 0.22, c1x: w * 1.0, c1y: h * 0.8 }
+        const dy = h * 0.008;
+        // 更平：所有峰顶尽量贴近地平线，起伏很小；偏绿：g 略大于 r、b
+        const layer4 = [
+            { x: w * 0.05, y: hh + h * 0.18, c0x: -10, c0y: hh + h * 0.16, c1x: w * 0.02, c1y: hh + h * 0.15 },
+            { x: w * 0.2, y: hh + h * 0.1, c0x: w * 0.12, c0y: hh + h * 0.16, c1x: w * 0.16, c1y: hh + h * 0.06 },
+            { x: w * 0.38, y: hh + h * 0.14, c0x: w * 0.28, c0y: hh + h * 0.04, c1x: w * 0.34, c1y: hh + h * 0.1 },
+            { x: w * 0.55, y: hh + h * 0.06, c0x: w * 0.46, c0y: hh + h * 0.12, c1x: w * 0.5, c1y: hh + h * 0.02 },
+            { x: w * 0.72, y: hh + h * 0.12, c0x: w * 0.62, c0y: hh + h * 0.02, c1x: w * 0.68, c1y: hh + h * 0.08 },
+            { x: w * 0.9, y: hh + h * 0.08, c0x: w * 0.8, c0y: hh + h * 0.1, c1x: w * 0.86, c1y: hh + h * 0.04 },
+            { x: w * 1.12, y: h + 20, c0x: w * 0.98, c0y: hh + h * 0.06, c1x: w * 1.05, c1y: h * 0.68 }
         ];
         const layer3 = [
-            { x: w * 0.18, y: hh + h * 0.38, c0x: w * 0.06, c0y: hh + h * 0.3, c1x: w * 0.12, c1y: hh + h * 0.35 },
-            { x: w * 0.42, y: hh + h * 0.28, c0x: w * 0.28, c0y: hh + h * 0.35, c1x: w * 0.36, c1y: hh + h * 0.24 },
-            { x: w * 0.65, y: hh + h * 0.32, c0x: w * 0.52, c0y: hh + h * 0.25, c1x: w * 0.58, c1y: hh + h * 0.28 },
-            { x: w * 0.88, y: hh + h * 0.3, c0x: w * 0.75, c0y: hh + h * 0.28, c1x: w * 0.84, c1y: hh + h * 0.26 },
-            { x: w * 1.05, y: h + 10, c0x: w * 0.95, c0y: hh + h * 0.28, c1x: w * 1.02, c1y: h * 0.85 }
+            { x: w * 0.04, y: hh + h * 0.22, c0x: -15, c0y: hh + h * 0.2, c1x: w * 0.01, c1y: hh + h * 0.18 },
+            { x: w * 0.18, y: hh + h * 0.14, c0x: w * 0.1, c0y: hh + h * 0.2, c1x: w * 0.14, c1y: hh + h * 0.1 },
+            { x: w * 0.36, y: hh + h * 0.18, c0x: w * 0.26, c0y: hh + h * 0.08, c1x: w * 0.32, c1y: hh + h * 0.14 },
+            { x: w * 0.52, y: hh + h * 0.1, c0x: w * 0.44, c0y: hh + h * 0.16, c1x: w * 0.48, c1y: hh + h * 0.06 },
+            { x: w * 0.7, y: hh + h * 0.16, c0x: w * 0.6, c0y: hh + h * 0.04, c1x: w * 0.66, c1y: hh + h * 0.12 },
+            { x: w * 0.88, y: hh + h * 0.12, c0x: w * 0.78, c0y: hh + h * 0.14, c1x: w * 0.84, c1y: hh + h * 0.08 },
+            { x: w * 1.1, y: h + 20, c0x: w * 0.96, c0y: hh + h * 0.1, c1x: w * 1.04, c1y: h * 0.7 }
         ];
-        const layer4 = [
-            { x: w * 0.25, y: hh + h * 0.42, c0x: w * 0.1, c0y: hh + h * 0.38, c1x: w * 0.18, c1y: hh + h * 0.4 },
-            { x: w * 0.5, y: hh + h * 0.36, c0x: w * 0.38, c0y: hh + h * 0.4, c1x: w * 0.46, c1y: hh + h * 0.34 },
-            { x: w * 0.75, y: hh + h * 0.4, c0x: w * 0.62, c0y: hh + h * 0.35, c1x: w * 0.7, c1y: hh + h * 0.38 },
-            { x: w * 1.05, y: h + 10, c0x: w * 0.88, c0y: hh + h * 0.38, c1x: w * 1.0, c1y: h * 0.88 }
+        const layer2 = [
+            { x: w * 0.08, y: hh + h * 0.26, c0x: -5, c0y: hh + h * 0.24, c1x: w * 0.04, c1y: hh + h * 0.22 },
+            { x: w * 0.22, y: hh + h * 0.06, c0x: w * 0.14, c0y: hh + h * 0.22, c1x: w * 0.18, c1y: hh + h * 0.02 },
+            { x: w * 0.38, y: hh + h * 0.16, c0x: w * 0.28, c0y: hh + dy, c1x: w * 0.34, c1y: hh + h * 0.1 },
+            { x: w * 0.54, y: hh + h * 0.04, c0x: w * 0.46, c0y: hh + h * 0.12, c1x: w * 0.5, c1y: hh + dy },
+            { x: w * 0.7, y: hh + h * 0.14, c0x: w * 0.62, c0y: hh + h * 0.02, c1x: w * 0.66, c1y: hh + h * 0.08 },
+            { x: w * 0.86, y: hh + h * 0.08, c0x: w * 0.76, c0y: hh + h * 0.16, c1x: w * 0.82, c1y: hh + h * 0.04 },
+            { x: w * 1.08, y: h + 20, c0x: w * 0.94, c0y: hh + h * 0.06, c1x: w * 1.02, c1y: h * 0.72 }
         ];
-        drawMountainLayer(layer4, 48, 62, 78, 0.8, false);
-        drawMountainLayer(layer3, 58, 72, 88, 0.86, false);
-        drawMountainLayer(layer2, 68, 82, 98, 0.9, false);
-        drawMountainLayer(layer1, 78, 92, 108, 0.94, true);
+        const layer1 = [
+            { x: w * 0.02, y: hh + h * 0.3, c0x: -20, c0y: hh + h * 0.28, c1x: w * 0, c1y: hh + h * 0.26 },
+            { x: w * 0.16, y: hh + h * 0.04, c0x: w * 0.08, c0y: hh + h * 0.24, c1x: w * 0.12, c1y: hh + dy },
+            { x: w * 0.32, y: hh + h * 0.12, c0x: w * 0.24, c0y: hh - dy, c1x: w * 0.28, c1y: hh + h * 0.06 },
+            { x: w * 0.48, y: hh + h * 0.02, c0x: w * 0.4, c0y: hh + h * 0.08, c1x: w * 0.44, c1y: hh - dy },
+            { x: w * 0.64, y: hh + h * 0.1, c0x: w * 0.56, c0y: hh + dy, c1x: w * 0.6, c1y: hh + h * 0.06 },
+            { x: w * 0.8, y: hh + h * 0.04, c0x: w * 0.7, c0y: hh + h * 0.08, c1x: w * 0.76, c1y: hh + dy },
+            { x: w * 0.96, y: hh + h * 0.06, c0x: w * 0.86, c0y: hh - dy, c1x: w * 0.92, c1y: hh + h * 0.02 },
+            { x: w * 1.1, y: h + 20, c0x: w * 1.02, c0y: hh + h * 0.04, c1x: w * 1.06, c1y: h * 0.74 }
+        ];
+        // 偏绿色：r < g，青绿/墨绿感；更雾：alpha 略降
+        drawMountainLayer(layer4, 38, 58, 48, 0.58, false);
+        drawMountainLayer(layer3, 42, 65, 52, 0.65, false);
+        drawMountainLayer(layer2, 48, 72, 58, 0.75, false);
+        drawMountainLayer(layer1, 52, 78, 62, 0.82, true);
+        // 地平线雾带：一条半透明横条，增强“雾”感
+        const mistGrad = ctx.createLinearGradient(0, hh - h * 0.08, 0, hh + h * 0.12);
+        mistGrad.addColorStop(0, 'rgba(200, 220, 210, 0)');
+        mistGrad.addColorStop(0.35, 'rgba(210, 230, 218, 0.18)');
+        mistGrad.addColorStop(0.5, 'rgba(220, 238, 225, 0.22)');
+        mistGrad.addColorStop(0.65, 'rgba(210, 230, 218, 0.16)');
+        mistGrad.addColorStop(1, 'rgba(200, 220, 210, 0)');
+        ctx.fillStyle = mistGrad;
+        ctx.fillRect(-20, hh - h * 0.08, w + 100, h * 0.2);
 
         // 4. 流云
         clouds.forEach(c => {
@@ -714,7 +720,7 @@ function createChineseBackground() {
             ctx.fill();
         });
 
-        // 5. 飞鸟：动态飞行，深色粗线，明显可见（非烧制夜段时绘制）
+        // 5. 飞鸟：动态飞行，深色粗线（非烧制夜段时绘制）
         if (!isFiring || phase < 0.25 || phase > 0.75) {
             ctx.strokeStyle = 'rgba(20, 22, 30, 0.95)';
             ctx.lineWidth = Math.max(3, w * 0.003);
@@ -728,6 +734,27 @@ function createChineseBackground() {
                 ctx.beginPath();
                 ctx.moveTo(bx - wingSpan, by + wingSpan * 0.4);
                 ctx.quadraticCurveTo(bx, by - wingSpan * flap, bx + wingSpan, by + wingSpan * 0.4);
+                ctx.stroke();
+            });
+            // 侧边往返飞鸟：从 A 飞到 B 再飞回 A，循环；左右两侧各若干只
+            const wingSpanSide = w * 0.032;
+            sideBirds.forEach(b => {
+                const cycle = (t * b.speed + b.phase0) % 2;
+                const goingRight = cycle <= 1;
+                const xNorm = goingRight
+                    ? b.xA + (b.xB - b.xA) * cycle
+                    : b.xB - (b.xB - b.xA) * (cycle - 1);
+                const bx = xNorm * w;
+                const by = b.y * h + Math.sin(t * 3 + b.wingPhase) * h * 0.012;
+                const flap = Math.sin(t * 6 + b.wingPhase) * 0.35;
+                ctx.beginPath();
+                if (goingRight) {
+                    ctx.moveTo(bx - wingSpanSide, by + wingSpanSide * 0.4);
+                    ctx.quadraticCurveTo(bx, by - wingSpanSide * flap, bx + wingSpanSide, by + wingSpanSide * 0.4);
+                } else {
+                    ctx.moveTo(bx + wingSpanSide, by + wingSpanSide * 0.4);
+                    ctx.quadraticCurveTo(bx, by - wingSpanSide * flap, bx - wingSpanSide, by + wingSpanSide * 0.4);
+                }
                 ctx.stroke();
             });
         }
@@ -1314,33 +1341,17 @@ function renderUI(stage) {
             `;
             panel.appendChild(knowDiv);
         }
-        if (state.user) {
-            createBtn(panel, "收藏", () => saveCurrentCeramic(shapeName, clayName, glazeName, shape ? shape.id : '', cat));
-            createBtn(panel, "再制一件", () => location.reload());
-        } else {
-            const tip = document.createElement('p');
-            tip.className = 'result-login-tip';
-            tip.innerHTML = '登录后可保存作品 · <a href="' + API_BASE + '/api/wechat/auth-url?type=redirect" class="link-wechat">微信登录</a>';
-            panel.appendChild(tip);
-            createBtn(panel, "收藏并重制", () => location.reload());
-        }
-    }
-}
-
-async function saveCurrentCeramic(shapeName, clayName, glazeName, shapeId, categoryKey) {
-    try {
-        await api('/api/user/ceramics', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shapeName, clayName, glazeName, shapeId, categoryKey: categoryKey || state.currentCategory })
-        });
-        if (document.getElementById('master-text')) {
-            document.getElementById('master-text').innerHTML = '已收藏到「我的作品」。';
-        }
-    } catch (e) {
-        if (document.getElementById('master-text')) {
-            document.getElementById('master-text').innerHTML = '收藏失败，请重试。';
-        }
+        const saveAndName = () => {
+            const defaultName = '作品 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            const name = prompt('为这件作品起个名字（留空则使用默认名）', defaultName);
+            const finalName = (name && name.trim()) ? name.trim() : defaultName;
+            addLocalCeramic({ name: finalName, clayName, shapeName, glazeName, shapeId: shape ? shape.id : '', categoryKey: cat });
+            if (document.getElementById('master-text')) {
+                document.getElementById('master-text').innerHTML = '已保存到「以往历史」，可点击顶部「以往历史」查看。';
+            }
+        };
+        createBtn(panel, "保存作品", saveAndName);
+        createBtn(panel, "再制一件", () => location.reload());
     }
 }
 

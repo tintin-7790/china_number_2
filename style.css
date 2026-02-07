@@ -90,6 +90,10 @@ body {
     font-size: 0.9rem; color: #cfd8dc;
 }
 .work-shape { color: var(--accent); }
+.work-name { font-weight: 600; color: var(--accent); display: block; margin-bottom: 4px; }
+.work-meta { color: #90a4ae; font-size: 0.85em; }
+.work-date { display: block; margin-top: 4px; color: #78909c; font-size: 0.8em; }
+.history-list .history-item { padding: 12px 0; }
 
 .master-message {
     display: flex; align-items: flex-start; max-width: 85%;
