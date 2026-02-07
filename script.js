@@ -27,6 +27,97 @@ const state = {
 };
 
 const API_BASE = '';
+const LOCAL_PROGRESS_KEY = 'jdz_local_progress';
+
+function getLocalProgress() {
+    try {
+        const raw = localStorage.getItem(LOCAL_PROGRESS_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || !data.stage) return null;
+        return data;
+    } catch { return null; }
+}
+
+function saveLocalProgress() {
+    const stage = state.stage;
+    if (!state.clayData) return;
+    const payload = {
+        clayId: state.clayData.id,
+        shapeId: state.targetShape ? state.targetShape.id : null,
+        category: state.currentCategory || 'bottle',
+        stage,
+        glazeMixIds: (state.glazeMix || []).map(m => m.id),
+        finalGlazeName: state.finalGlazeName || null,
+        atmosphere: state.atmosphere || 'OXIDATION'
+    };
+    try {
+        localStorage.setItem(LOCAL_PROGRESS_KEY, JSON.stringify(payload));
+        if (document.getElementById('master-text')) {
+            const prev = document.getElementById('master-text').innerHTML;
+            document.getElementById('master-text').innerHTML = '已保存进度，下次可点「继续上次」。';
+            setTimeout(() => { if (document.getElementById('master-text')) document.getElementById('master-text').innerHTML = prev; }, 2000);
+        }
+    } catch (_) {}
+}
+
+function loadLocalProgress() {
+    const saved = getLocalProgress();
+    if (!saved) return;
+    const clay = CLAYS.find(c => c.id === saved.clayId);
+    if (!clay) return;
+    state.clayData = clay;
+    state.currentCategory = saved.category || 'bottle';
+    const cat = SHAPE_CATS[state.currentCategory];
+    state.targetShape = (cat && saved.shapeId) ? cat.items.find(s => s.id === saved.shapeId) || null : null;
+    state.glazeMix = (saved.glazeMixIds || []).map(id => MINERALS.find(m => m.id === id)).filter(Boolean);
+    state.finalGlazeName = saved.finalGlazeName || null;
+    state.atmosphere = saved.atmosphere || 'OXIDATION';
+    state.firingPhase = null;
+    if (!clayMesh) createClayMesh(clay); else updateClayMaterial(clay);
+    const stage = saved.stage;
+    if (stage === 'THROWING' || stage === 'TRIMMING' || stage === 'GLAZING' || stage === 'FIRING' || stage === 'RESULT') {
+        if (state.targetShape) morphToTargetSync();
+    }
+    enterStage(stage);
+    if (stage === 'GLAZING' && state.glazeMix.length > 0) {
+        let r = 0, g = 0, b = 0;
+        state.glazeMix.forEach(m => {
+            const c = new THREE.Color(m.color);
+            r += c.r; g += c.g; b += c.b;
+        });
+        const len = state.glazeMix.length;
+        const mixColor = new THREE.Color(r / len, g / len, b / len);
+        if (clayMesh) {
+            clayMesh.material = new THREE.MeshStandardMaterial({
+                color: mixColor,
+                roughness: 1.0,
+                bumpMap: noiseTexture,
+                bumpScale: 0.02,
+                side: THREE.DoubleSide
+            });
+        }
+    }
+    if (stage === 'RESULT' && state.finalGlazeName && clayMesh) {
+        const has = t => state.glazeMix.some(m => m.type === t);
+        let finalColor = new THREE.Color(0xffffff);
+        if (has('CU')) finalColor.setHex(state.atmosphere === 'REDUCTION' ? 0xB71C1C : 0x00695C);
+        else if (has('CO')) finalColor.setHex(0x1A237E);
+        else if (has('FE')) finalColor.setHex(state.atmosphere === 'REDUCTION' ? 0xA5D6A7 : 0x4E342E);
+        else if (has('AU')) finalColor.setHex(0xFFD700);
+        clayMesh.material = new THREE.MeshPhysicalMaterial({
+            color: finalColor,
+            roughness: 0.15,
+            metalness: 0.1,
+            transmission: 0.1,
+            thickness: 1.0,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.05,
+            side: THREE.DoubleSide,
+            emissive: 0x000000
+        });
+    }
+}
 
 async function api(path, options = {}) {
     const res = await fetch(API_BASE + path, { credentials: 'include', ...options });
@@ -39,12 +130,27 @@ async function checkAuth() {
     if (state.authChecked) return;
     state.authChecked = true;
     try {
-        const { user } = await api('/api/user/me');
-        state.user = user || null;
+        const res = await fetch(API_BASE + '/api/user/me', { credentials: 'include' });
+        if (res.status === 404) {
+            showWrongServerTip();
+            state.user = null;
+        } else {
+            const data = res.ok ? await res.json().catch(() => ({})) : {};
+            state.user = (data && data.user) || null;
+        }
     } catch {
         state.user = null;
     }
     renderUserArea();
+}
+
+function showWrongServerTip() {
+    if (document.getElementById('wrong-server-tip')) return;
+    const tip = document.createElement('div');
+    tip.id = 'wrong-server-tip';
+    tip.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#d32f2f;color:#fff;padding:10px 16px;text-align:center;z-index:9999;font-size:14px;';
+    tip.innerHTML = '微信登录需要先运行「启动带登录.bat」，再用浏览器打开 <strong>http://localhost:3000</strong>（不要用 file:// 或其它端口）';
+    document.body.appendChild(tip);
 }
 
 function renderUserArea() {
@@ -1066,6 +1172,9 @@ function renderUI(stage) {
         badge.innerText = '序章';
         master.innerText = "欢迎来到景德镇云工坊。老朽将带你体验从选土到烧窑的全过程。";
         createBtn(panel, "开始制瓷", () => enterStage('CLAY'));
+        if (getLocalProgress()) {
+            createBtn(panel, "继续上次", () => loadLocalProgress(), 'btn-continue');
+        }
     }
     else if (stage === 'CLAY') {
         badge.innerText = '一、选泥';
@@ -1090,6 +1199,7 @@ function renderUI(stage) {
             grid.appendChild(el);
         });
         panel.appendChild(grid);
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'SHAPE') {
         badge.innerText = '二、定型';
@@ -1119,17 +1229,20 @@ function renderUI(stage) {
         scroller.appendChild(listContainer);
         panel.appendChild(scroller);
         renderShapeList(listContainer);
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'THROWING') {
         badge.innerText = '三、拉坯';
         master.innerHTML = `目标：<b>${state.targetShape.name}</b>。<br>手指在模型上滑动，赋予泥土灵魂。点击下方按钮自动精修。`;
         createBtn(panel, "自动塑形", () => morphToTarget());
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'TRIMMING') {
         badge.innerText = '四、利坯';
         master.innerText = "修去多余泥料，使器壁厚薄均匀。手指划过之处，泥屑飞溅。";
         state.isDragging = false;
         createBtn(panel, "修整完毕", () => enterStage('GLAZING'));
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'GLAZING') {
         badge.innerText = '五、施釉';
@@ -1146,6 +1259,7 @@ function renderUI(stage) {
         });
         panel.appendChild(rack);
         createBtn(panel, "去烧窑", () => enterStage('FIRING'));
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'FIRING') {
         badge.innerText = '六、烧制';
@@ -1168,6 +1282,7 @@ function renderUI(stage) {
         box.appendChild(btnOx);
         box.appendChild(btnRe);
         panel.appendChild(box);
+        createBtn(panel, "保存进度", () => saveLocalProgress(), 'btn-save-progress');
     }
     else if (stage === 'RESULT') {
         badge.innerText = '大成';
@@ -1526,6 +1641,37 @@ function morphToTarget() {
         positions.needsUpdate = true;
         clayMesh.geometry.computeVertexNormals();
     }, 16);
+}
+
+// 仅把泥胚变形为目标器型，不切换阶段（用于恢复进度）
+function morphToTargetSync() {
+    const shape = state.targetShape;
+    if (!shape || !clayMesh) return;
+    const positions = clayMesh.geometry.attributes.position;
+    const wallTypes = clayMesh.geometry.attributes.wallType;
+    const thickness = CONFIG.clayThickness;
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i), z = positions.getZ(i), y = positions.getY(i);
+        const currentR = Math.sqrt(x * x + z * z);
+        if (currentR < 0.01) continue;
+        const type = wallTypes.getX(i);
+        const normY = Math.max(0, Math.min(1, y / CONFIG.height));
+        let baseR = shape.func(normY) * shape.scaleR * CONFIG.baseRadius;
+        const thicknessFactor = normY <= 0.22 ? 1 : (1 - 0.6 * (normY - 0.22) / 0.78);
+        const effThickness = thickness * Math.max(0.4, thicknessFactor);
+        if (normY > 0.92) baseR *= 1 + 0.008 * (normY - 0.92) / 0.08;
+        const rimTopTaper = (normY > 0.93) ? (0.72 + 0.28 * (1 - normY) / 0.07) : 1;
+        let r = baseR;
+        if (type === -1.0) r = Math.max(0.05, baseR - effThickness);
+        else if (type === 1.0) r = baseR;
+        else { r = Math.max(0.05, baseR - effThickness * 0.5 * rimTopTaper); if (y < 0.1) r = baseR * (currentR / CONFIG.baseRadius); }
+        const angle = Math.atan2(z, x);
+        positions.setX(i, Math.cos(angle) * r);
+        positions.setY(i, y * shape.scaleY);
+        positions.setZ(i, Math.sin(angle) * r);
+    }
+    positions.needsUpdate = true;
+    clayMesh.geometry.computeVertexNormals();
 }
 
 function addGlaze(mineral) {
